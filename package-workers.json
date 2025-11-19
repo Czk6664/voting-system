@@ -1,0 +1,18 @@
+{
+  "name": "voting-system-workers",
+  "version": "1.0.0",
+  "description": "投票系统 Cloudflare Workers 版本",
+  "main": "src/worker.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --config wrangler-supabase.toml",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.22.0"
+  }
+}

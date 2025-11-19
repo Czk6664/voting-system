@@ -2,10 +2,11 @@
   "name": "realtime-voting-system",
   "version": "1.1.0",
   "description": "实时投票系统 - 支持匿名投票、差额选举、实时统计、权限控制",
-  "main": "app.js",
+  "main": "app-supabase.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "node app.js",
+    "start": "node app-supabase.js",
+    "dev": "node app-supabase.js",
+    "start:original": "node app.js",
     "test:storage": "node test-storage.js",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop voting-system",
@@ -27,9 +28,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@supabase/supabase-js": "^2.83.0",
     "express": "^4.18.2",
-    "ws": "^8.14.2",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "ws": "^8.14.2"
   },
   "engines": {
     "node": ">=14.0.0",
