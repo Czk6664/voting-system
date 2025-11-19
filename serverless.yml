@@ -1,0 +1,36 @@
+# 腾讯云 Serverless 配置文件
+app: voting-system
+stage: dev
+
+component: express
+name: voting-system-app
+
+inputs:
+  src:
+    src: ./
+    exclude:
+      - .git/**
+      - .gitignore
+      - .serverless
+      - .env
+      - node_modules/**
+      - data/**
+      - backup/**
+      - logs/**
+      - "*.md"
+      - "*.bat"
+      - "*.txt"
+  region: ap-guangzhou
+  runtime: Nodejs18.15
+  apigatewayConf:
+    protocols:
+      - http
+      - https
+    environment: release
+  functionConf:
+    timeout: 10
+    memorySize: 512
+    environment:
+      variables:
+        NODE_ENV: production
+        ADMIN_PASSWORD: admin123
