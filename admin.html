@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员控制台</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👨‍💼 管理员控制台</h1>
+            <button onclick="logout()" class="secondary">退出登录</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('create', this)">创建投票</button>
+            <button class="tab" onclick="showTab('manage', this)">管理投票</button>
+            <button class="tab" onclick="showTab('history', this)">历史记录</button>
+            <button class="tab" onclick="showTab('codes', this)">访问码</button>
+        </div>
+
+        <!-- 创建投票 -->
+        <div id="createTab" class="tab-content">
+            <h2>创建新投票</h2>
+            <form id="createPollForm">
+                <input type="text" id="pollTitle" placeholder="投票标题" required />
+                <textarea id="pollDescription" placeholder="投票描述（可选）"></textarea>
+                
+                <label>投票类型：</label>
+                <select id="pollType" onchange="toggleMultipleOptions()">
+                    <option value="single">单选</option>
+                    <option value="multiple">多选</option>
+                    <option value="election">差额选举</option>
+                </select>
+                
+                <div id="multipleOptions" style="display: none; margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <label>多选配置：</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="font-size: 0.9em;">至少选择：</label>
+                            <input type="number" id="minSelection" min="0" value="1" />
+                        </div>
+                        <div>
+                            <label style="font-size: 0.9em;">至多选择：</label>
+                            <input type="number" id="maxSelection" min="1" value="3" />
+                        </div>
+                        <div>
+                            <label style="font-size: 0.9em;">必须选择：</label>
+                            <input type="number" id="exactSelection" min="0" value="0" placeholder="0表示不限制" />
+                        </div>
+                    </div>
+                    <p style="font-size: 0.85em; color: #6c757d; margin-top: 10px;">
+                        提示：如果设置"必须选择"，则会忽略"至少"和"至多"的设置
+                    </p>
+                </div>
+                
+                <div id="electionOptions" style="display: none; margin: 15px 0; padding: 15px; background: #fff3cd; border-radius: 8px; border: 2px solid #ffc107;">
+                    <label style="color: #856404;">差额选举配置：</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 10px 0;">
+                        <div>
+                            <label style="font-size: 0.9em;">应选人数：</label>
+                            <input type="number" id="shouldElect" min="1" value="3" />
+                            <p style="font-size: 0.85em; color: #856404; margin-top: 5px;">
+                                候选人数量应大于应选人数
+                            </p>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.9em;">实际到会人数：</label>
+                            <input type="number" id="attendeeCount" min="1" value="60" />
+                            <p style="font-size: 0.85em; color: #856404; margin-top: 5px;">
+                                用于验证选举有效性
+                            </p>
+                        </div>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                        <h4 style="color: #856404; margin-bottom: 10px; font-size: 0.95em;">投票规则说明：</h4>
+                        <ul style="font-size: 0.85em; color: #666; line-height: 1.8; margin-left: 20px;">
+                            <li>对候选人可表示：<strong>赞成○</strong>、<strong>不赞成×</strong>、<strong>弃权（不标记）</strong></li>
+                            <li>投不赞成的可<strong>另选他人</strong>，在空格处填写姓名并画○</li>
+                            <li>另选人数量<strong>不能超过</strong>画×号的候选人数量</li>
+                            <li>所选人数<strong>等于或少于</strong>应选人数为有效票</li>
+                            <li>所选人数<strong>多于</strong>应选人数为无效票</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <label>
+                    <input type="checkbox" id="pollAnonymous" checked />
+                    匿名投票
+                </label>
+                
+                <label>投票选项（每行一个）：</label>
+                <textarea id="pollOptions" placeholder="选项1&#10;选项2&#10;选项3" required></textarea>
+                
+                <label>通过条件（可选）：</label>
+                <input type="text" id="passCondition" placeholder="例如：票数>50 或 百分比>60%" />
+                
+                <label>失败条件（可选）：</label>
+                <input type="text" id="failCondition" placeholder="例如：票数<10 或 百分比<30%" />
+                
+                <button type="submit">创建投票</button>
+            </form>
+        </div>
+
+        <!-- 管理投票 -->
+        <div id="manageTab" class="tab-content" style="display: none;">
+            <h2>投票列表</h2>
+            <div id="pollsList"></div>
+        </div>
+
+        <!-- 历史记录 -->
+        <div id="historyTab" class="tab-content" style="display: none;">
+            <h2>投票历史记录</h2>
+            <div style="margin-bottom: 20px;">
+                <label>筛选状态：</label>
+                <select id="historyFilter" onchange="loadHistory()">
+                    <option value="all">全部</option>
+                    <option value="pending">未开始</option>
+                    <option value="active">进行中</option>
+                    <option value="ended">已结束</option>
+                </select>
+            </div>
+            <div id="historyList"></div>
+        </div>
+
+        <!-- 访问码 -->
+        <div id="codesTab" class="tab-content" style="display: none;">
+            <h2>生成访问码</h2>
+            <input type="number" id="codeCount" value="10" min="1" max="100" />
+            <button onclick="generateCodes()">生成访问码</button>
+            <div id="codesList"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let polls = [];
+
+        // 检查登录
+        if (!localStorage.getItem('adminToken')) {
+            window.location.href = 'index.html';
+        }
+
+        // WebSocket 连接
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}`);
+            
+            ws.onopen = () => {
+                console.log('WebSocket连接已建立');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'voteUpdate' || data.type === 'pollStarted' || data.type === 'pollEnded') {
+                    loadPolls();
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket错误:', error);
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket连接已关闭，5秒后重连...');
+                setTimeout(connectWebSocket, 5000);
+            };
+        }
+
+        connectWebSocket();
+
+        function toggleMultipleOptions() {
+            const pollType = document.getElementById('pollType').value;
+            const multipleOptions = document.getElementById('multipleOptions');
+            const electionOptions = document.getElementById('electionOptions');
+            
+            multipleOptions.style.display = pollType === 'multiple' ? 'block' : 'none';
+            electionOptions.style.display = pollType === 'election' ? 'block' : 'none';
+        }
+
+        function showTab(tabName, clickedElement) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+            
+            // 如果有点击元素，添加active类，否则查找对应的tab按钮
+            if (clickedElement) {
+                clickedElement.classList.add('active');
+            } else {
+                document.querySelectorAll('.tab').forEach(t => {
+                    if (t.textContent.includes(tabName === 'create' ? '创建' : 
+                                               tabName === 'manage' ? '管理' : 
+                                               tabName === 'history' ? '历史' : '访问码')) {
+                        t.classList.add('active');
+                    }
+                });
+            }
+            
+            document.getElementById(tabName + 'Tab').style.display = 'block';
+            
+            if (tabName === 'manage') {
+                loadPolls();
+            } else if (tabName === 'history') {
+                loadHistory();
+            }
+        }
+
+        document.getElementById('createPollForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const options = document.getElementById('pollOptions').value
+                .split('\n')
+                .map(o => o.trim())
+                .filter(o => o);
+            
+            const pollType = document.getElementById('pollType').value;
+            const poll = {
+                title: document.getElementById('pollTitle').value,
+                description: document.getElementById('pollDescription').value,
+                type: pollType,
+                anonymous: document.getElementById('pollAnonymous').checked,
+                options,
+                passCondition: document.getElementById('passCondition').value,
+                failCondition: document.getElementById('failCondition').value
+            };
+            
+            // 如果是差额选举，添加选举配置
+            if (pollType === 'election') {
+                const shouldElect = parseInt(document.getElementById('shouldElect').value) || 1;
+                const attendeeCount = parseInt(document.getElementById('attendeeCount').value) || 0;
+                
+                if (shouldElect >= options.length) {
+                    alert(`应选人数(${shouldElect})必须小于候选人数量(${options.length})，这样才是差额选举`);
+                    return;
+                }
+                
+                if (attendeeCount < 1) {
+                    alert('请输入实际到会人数');
+                    return;
+                }
+                
+                poll.electionConfig = {
+                    shouldElect: shouldElect,
+                    attendeeCount: attendeeCount
+                };
+            }
+            // 如果是多选，添加多选配置
+            else if (pollType === 'multiple') {
+                const exactSelection = parseInt(document.getElementById('exactSelection').value) || 0;
+                const minSelection = parseInt(document.getElementById('minSelection').value) || 1;
+                const maxSelection = parseInt(document.getElementById('maxSelection').value) || options.length;
+                
+                // 验证多选配置
+                if (exactSelection > 0) {
+                    if (exactSelection > options.length) {
+                        alert(`必须选择的数量(${exactSelection})不能超过选项总数(${options.length})`);
+                        return;
+                    }
+                    poll.selectionConfig = {
+                        exact: exactSelection
+                    };
+                } else {
+                    if (minSelection > maxSelection) {
+                        alert('最少选择数量不能大于最多选择数量');
+                        return;
+                    }
+                    if (maxSelection > options.length) {
+                        alert(`最多选择数量(${maxSelection})不能超过选项总数(${options.length})`);
+                        return;
+                    }
+                    if (minSelection < 1) {
+                        alert('最少选择数量不能小于1');
+                        return;
+                    }
+                    poll.selectionConfig = {
+                        min: minSelection,
+                        max: maxSelection
+                    };
+                }
+            }
+            
+            try {
+                const response = await fetch('/api/admin/poll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(poll)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('投票创建成功！');
+                    document.getElementById('createPollForm').reset();
+                    toggleMultipleOptions();
+                    showTab('manage');
+                }
+            } catch (error) {
+                alert('创建失败，请重试');
+            }
+        });
+
+        async function loadPolls() {
+            try {
+                const response = await fetch('/api/admin/polls');
+                const data = await response.json();
+                
+                if (data.success) {
+                    polls = data.polls;
+                    renderPolls();
+                }
+            } catch (error) {
+                console.error('加载投票失败', error);
+            }
+        }
+
+        function renderPolls() {
+            const container = document.getElementById('pollsList');
+            container.innerHTML = '';
+            
+            polls.forEach(poll => {
+                const pollCard = document.createElement('div');
+                pollCard.className = 'poll-card';
+                
+                // 使用后端返回的总票数
+                const totalVotes = poll.totalVotes || 0;
+                
+                const statusText = poll.status === 'active' ? '进行中' : 
+                                 poll.status === 'ended' ? '已结束' : '未开始';
+                
+                let typeText = poll.type === 'single' ? '单选' : 
+                              poll.type === 'election' ? '差额选举' : '多选';
+                if (poll.type === 'election' && poll.electionConfig) {
+                    typeText += ` (应选${poll.electionConfig.shouldElect}人，到会${poll.electionConfig.attendeeCount}人)`;
+                } else if (poll.type === 'multiple' && poll.selectionConfig) {
+                    if (poll.selectionConfig.exact) {
+                        typeText += ` (必选${poll.selectionConfig.exact}个)`;
+                    } else {
+                        typeText += ` (${poll.selectionConfig.min}-${poll.selectionConfig.max}个)`;
+                    }
+                }
+                
+                pollCard.innerHTML = `
+                    <h3>${poll.title}</h3>
+                    <p>${poll.description || ''}</p>
+                    <div class="poll-meta">
+                        <span>投票码: <strong style="color: #2b7cff; font-size: 1.2em;">${poll.code}</strong></span>
+                        <span>状态: ${statusText}</span>
+                        <span>总票数: ${totalVotes}</span>
+                        <span>${typeText}</span>
+                        <span>${poll.anonymous ? '匿名' : '实名'}</span>
+                        ${poll.type === 'election' && poll.electionConfig ? 
+                            `<span style="color: ${totalVotes <= poll.electionConfig.attendeeCount ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                                ${totalVotes <= poll.electionConfig.attendeeCount ? '✓ 选举有效' : '✗ 选举无效（收回选票>到会人数）'}
+                            </span>` : ''}
+                    </div>
+                    <div class="poll-results">
+                        ${poll.type === 'election' ? 
+                            // 差额选举结果显示
+                            Object.keys(poll.results).map(name => {
+                                const result = poll.results[name];
+                                const approve = result.approve || 0;
+                                const reject = result.reject || 0;
+                                const abstain = result.abstain || 0;
+                                const total = approve + reject + abstain;
+                                const approvePercent = total > 0 ? ((approve / total) * 100).toFixed(1) : 0;
+                                
+                                return `
+                                    <div class="result-item" style="background: ${result.isAlternative ? '#fff3cd' : 'white'};">
+                                        <div style="flex: 1;">
+                                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                                <span style="font-weight: 600;">${name}${result.isAlternative ? ' (另选)' : ''}</span>
+                                                <span style="color: #28a745; font-weight: bold;">赞成 ${approve}</span>
+                                            </div>
+                                            <div style="display: flex; gap: 10px; font-size: 0.85em; color: #666; margin-bottom: 5px;">
+                                                <span>✓ 赞成: ${approve}</span>
+                                                <span>✗ 不赞成: ${reject}</span>
+                                                <span>○ 弃权: ${abstain}</span>
+                                                <span>得票率: ${approvePercent}%</span>
+                                            </div>
+                                            <div style="background: #e9ecef; height: 8px; border-radius: 4px; overflow: hidden;">
+                                                <div style="background: #28a745; height: 100%; width: ${approvePercent}%; transition: width 0.3s;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('') :
+                            // 普通投票结果显示
+                            poll.options.map(opt => {
+                                const votes = poll.results[opt] || 0;
+                                const percentage = totalVotes > 0 ? ((votes / totalVotes) * 100).toFixed(1) : 0;
+                                return `
+                                    <div class="result-item">
+                                        <div style="flex: 1;">
+                                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                <span>${opt}</span>
+                                                <span>${votes} 票 (${percentage}%)</span>
+                                            </div>
+                                            <div style="background: #e9ecef; height: 8px; border-radius: 4px; overflow: hidden;">
+                                                <div style="background: #2b7cff; height: 100%; width: ${percentage}%; transition: width 0.3s;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')
+                        }
+                    </div>
+                    <div class="poll-actions">
+                        ${poll.status === 'pending' ? 
+                            `<button onclick="startPoll('${poll.id}')">开始投票</button>` : ''}
+                        ${poll.status === 'active' ? 
+                            `<button onclick="endPoll('${poll.id}')" class="danger">结束投票</button>` : ''}
+                        ${poll.status === 'ended' ? 
+                            `<button onclick="duplicatePoll('${poll.id}')">发起新一轮</button>
+                             <button onclick="exportResults('${poll.id}')" class="secondary">导出PDF</button>
+                             <button onclick="exportJSON('${poll.id}')" class="secondary">导出JSON</button>
+                             <button onclick="showChart('${poll.id}')" class="secondary">查看图表</button>` : ''}
+                    </div>
+                `;
+                
+                container.appendChild(pollCard);
+            });
+        }
+
+        async function startPoll(pollId) {
+            try {
+                const response = await fetch(`/api/admin/poll/${pollId}/start`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('投票已开始！');
+                    loadPolls();
+                }
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+
+        async function endPoll(pollId) {
+            if (!confirm('确定要结束这个投票吗？')) return;
+            
+            try {
+                const response = await fetch(`/api/admin/poll/${pollId}/end`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('投票已结束！');
+                    loadPolls();
+                }
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+
+        async function duplicatePoll(pollId) {
+            try {
+                const response = await fetch(`/api/admin/poll/${pollId}/duplicate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('新一轮投票已创建！');
+                    loadPolls();
+                }
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+
+        async function exportResults(pollId) {
+            window.open(`/api/admin/poll/${pollId}/export`, '_blank');
+        }
+
+        async function exportJSON(pollId) {
+            window.open(`/api/admin/poll/${pollId}/export-json`, '_blank');
+        }
+
+        function showChart(pollId) {
+            const poll = polls.find(p => p.id === pollId);
+            if (!poll) return;
+            
+            // 创建模态框显示图表
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.8);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 1000;
+            `;
+            
+            const chartContainer = document.createElement('div');
+            chartContainer.style.cssText = `
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                max-width: 900px;
+                width: 90%;
+                max-height: 90vh;
+                overflow: auto;
+            `;
+            
+            chartContainer.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>${poll.title}</h2>
+                    <button onclick="this.closest('.modal-overlay').remove()" style="width: auto; padding: 10px 20px;">关闭</button>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                    <div>
+                        <h3 style="text-align: center; margin-bottom: 15px;">饼图</h3>
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                    <div>
+                        <h3 style="text-align: center; margin-bottom: 15px;">柱状图</h3>
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            modal.className = 'modal-overlay';
+            modal.appendChild(chartContainer);
+            document.body.appendChild(modal);
+            
+            // 准备数据
+            let labels, dataValues;
+            if (poll.type === 'election') {
+                // 差额选举：使用赞成票数
+                labels = Object.keys(poll.results || {});
+                dataValues = labels.map(name => {
+                    const result = poll.results[name];
+                    return (result && result.approve) || 0;
+                });
+            } else {
+                // 普通投票
+                labels = poll.options || [];
+                dataValues = labels.map(opt => poll.results[opt] || 0);
+            }
+            const colors = [
+                '#2b7cff', '#1a6ae8', '#5b9cff', '#8bb8ff',
+                '#00c9a7', '#ff6b9d', '#ffc542', '#c44569'
+            ];
+            
+            // 绘制饼图
+            const pieCtx = document.getElementById('pieChart').getContext('2d');
+            new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: dataValues,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                    return `${context.label}: ${context.parsed} 票 (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 绘制柱状图
+            const barCtx = document.getElementById('barChart').getContext('2d');
+            new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '票数',
+                        data: dataValues,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function generateCodes() {
+            const count = document.getElementById('codeCount').value;
+            
+            try {
+                const response = await fetch('/api/admin/generate-codes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ count: parseInt(count) })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const container = document.getElementById('codesList');
+                    container.innerHTML = '<h3>生成的访问码：</h3>';
+                    const codeList = document.createElement('div');
+                    codeList.className = 'codes-grid';
+                    codeList.innerHTML = data.codes.map(code => 
+                        `<div class="code-item">${code}</div>`
+                    ).join('');
+                    container.appendChild(codeList);
+                }
+            } catch (error) {
+                alert('生成失败');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('adminToken');
+            window.location.href = 'index.html';
+        }
+
+        async function loadHistory() {
+            try {
+                const filter = document.getElementById('historyFilter').value;
+                const response = await fetch(`/api/admin/history?filter=${filter}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderHistory(data.history);
+                }
+            } catch (error) {
+                console.error('加载历史记录失败', error);
+            }
+        }
+
+        function renderHistory(history) {
+            const container = document.getElementById('historyList');
+            container.innerHTML = '';
+            
+            if (history.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无历史记录</p>';
+                return;
+            }
+            
+            // 将历史记录也存入polls数组，以便其他函数使用
+            history.forEach(historyPoll => {
+                const existingIndex = polls.findIndex(p => p.id === historyPoll.id);
+                if (existingIndex === -1) {
+                    polls.push(historyPoll);
+                }
+            });
+            
+            history.forEach(poll => {
+                const pollVotes = poll.totalVotes || 0;
+                const statusText = poll.status === 'active' ? '进行中' : 
+                                 poll.status === 'ended' ? '已结束' : '未开始';
+                const statusColor = poll.status === 'active' ? '#28a745' : 
+                                  poll.status === 'ended' ? '#6c757d' : '#ffc107';
+                
+                let typeText = poll.type === 'single' ? '单选' : 
+                              poll.type === 'election' ? '差额选举' : '多选';
+                if (poll.type === 'election' && poll.electionConfig) {
+                    typeText += ` (应选${poll.electionConfig.shouldElect}人，到会${poll.electionConfig.attendeeCount}人)`;
+                } else if (poll.type === 'multiple' && poll.selectionConfig) {
+                    if (poll.selectionConfig.exact) {
+                        typeText += ` (必选${poll.selectionConfig.exact}个)`;
+                    } else {
+                        typeText += ` (${poll.selectionConfig.min}-${poll.selectionConfig.max}个)`;
+                    }
+                }
+                
+                const historyCard = document.createElement('div');
+                historyCard.className = 'poll-card';
+                historyCard.style.borderLeft = `4px solid ${statusColor}`;
+                
+                historyCard.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <h3>${poll.title}</h3>
+                            <p style="color: #6c757d; font-size: 0.9em;">${poll.description || '无描述'}</p>
+                        </div>
+                        <span style="background: ${statusColor}; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.85em;">
+                            ${statusText}
+                        </span>
+                    </div>
+                    <div class="poll-meta" style="margin-top: 15px;">
+                        <span>投票码: <strong style="color: #2b7cff; font-size: 1.2em;">${poll.code}</strong></span>
+                        <span>创建: ${new Date(poll.createdAt).toLocaleString('zh-CN')}</span>
+                        ${poll.startedAt ? `<span>开始: ${new Date(poll.startedAt).toLocaleString('zh-CN')}</span>` : ''}
+                        ${poll.endedAt ? `<span>结束: ${new Date(poll.endedAt).toLocaleString('zh-CN')}</span>` : ''}
+                    </div>
+                    <div class="poll-meta">
+                        <span>总票数: ${pollVotes}</span>
+                        <span>${typeText}</span>
+                        <span>${poll.anonymous ? '匿名' : '实名'}</span>
+                    </div>
+                    <div class="poll-results" style="margin-top: 15px;">
+                        ${poll.type === 'election' ? 
+                            // 差额选举结果显示
+                            Object.keys(poll.results).map(name => {
+                                const result = poll.results[name];
+                                const approve = result.approve || 0;
+                                const reject = result.reject || 0;
+                                const abstain = result.abstain || 0;
+                                const total = approve + reject + abstain;
+                                const approvePercent = total > 0 ? ((approve / total) * 100).toFixed(1) : 0;
+                                
+                                return `
+                                    <div class="result-item" style="background: ${result.isAlternative ? '#fff3cd' : 'white'};">
+                                        <div style="flex: 1;">
+                                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                <span style="font-weight: 600;">${name}${result.isAlternative ? ' (另)' : ''}</span>
+                                                <span style="color: #28a745; font-weight: bold;">赞成 ${approve}</span>
+                                            </div>
+                                            <div style="display: flex; gap: 10px; font-size: 0.8em; color: #666; margin-bottom: 5px;">
+                                                <span>✓ ${approve}</span>
+                                                <span>✗ ${reject}</span>
+                                                <span>○ ${abstain}</span>
+                                            </div>
+                                            <div style="background: #e9ecef; height: 6px; border-radius: 3px; overflow: hidden;">
+                                                <div style="background: #28a745; height: 100%; width: ${approvePercent}%; transition: width 0.3s;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('') :
+                            // 普通投票结果显示
+                            poll.options.map(opt => {
+                                const votes = poll.results[opt] || 0;
+                                const percentage = pollVotes > 0 ? ((votes / pollVotes) * 100).toFixed(1) : 0;
+                                return `
+                                    <div class="result-item">
+                                        <div style="flex: 1;">
+                                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                <span>${opt}</span>
+                                                <span>${votes} 票 (${percentage}%)</span>
+                                            </div>
+                                            <div style="background: #e9ecef; height: 6px; border-radius: 3px; overflow: hidden;">
+                                                <div style="background: ${statusColor}; height: 100%; width: ${percentage}%; transition: width 0.3s;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')
+                        }
+                    </div>
+                    ${poll.status === 'ended' ? `
+                        <div class="poll-actions" style="margin-top: 15px;">
+                            <button onclick="duplicatePoll('${poll.id}')" class="secondary">复制此投票</button>
+                            <button onclick="exportResults('${poll.id}')" class="secondary">导出PDF</button>
+                            <button onclick="showChart('${poll.id}')" class="secondary">查看图表</button>
+                        </div>
+                    ` : ''}
+                `;
+                
+                container.appendChild(historyCard);
+            });
+        }
+
+        // 初始加载
+        loadPolls();
+    </script>
+</body>
+</html>

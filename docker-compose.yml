@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  voting-system:
+    build: .
+    container_name: voting-system
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+    restart: unless-stopped
+    volumes:
+      # 如果需要持久化数据，可以挂载数据目录
+      - ./data:/app/data
+    networks:
+      - voting-network
+
+networks:
+  voting-network:
+    driver: bridge

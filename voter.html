@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投票界面</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🗳️ 投票</h1>
+        </div>
+
+        <!-- 输入投票码 -->
+        <div id="codeInput" style="display: block;">
+            <div class="poll-info">
+                <h2>请输入投票码</h2>
+                <p style="color: #666; margin-bottom: 20px;">请向管理员获取6位数字投票码</p>
+                <input type="text" id="pollCode" placeholder="请输入6位投票码" maxlength="6" 
+                       style="text-align: center; font-size: 1.5em; letter-spacing: 0.3em; font-weight: bold;" />
+                <button onclick="verifyPollCode()" style="margin-top: 20px;">验证并进入</button>
+                <div id="codeError" class="error"></div>
+            </div>
+        </div>
+
+        <div id="noPoll" style="display: none;">
+            <div class="empty-state">
+                <p>投票码无效或投票未开始</p>
+                <button onclick="location.reload()">重新输入</button>
+            </div>
+        </div>
+
+        <div id="pollContent" style="display: none;">
+            <div class="poll-info">
+                <h2 id="pollTitle"></h2>
+                <p id="pollDescription"></p>
+                <div class="poll-meta">
+                    <span id="pollType"></span>
+                    <span id="pollAnonymous"></span>
+                </div>
+            </div>
+
+            <form id="voteForm">
+                <div id="optionsContainer"></div>
+                <button type="submit" id="submitBtn">提交投票</button>
+            </form>
+        </div>
+
+        <div id="votedState" style="display: none;">
+            <div class="success-state">
+                <div class="success-icon">✓</div>
+                <h2>投票成功！</h2>
+                <p>感谢您的参与</p>
+                <button onclick="window.location.href='index.html'">返回首页</button>
+                <button onclick="window.location.href='display.html'" class="secondary">查看结果</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let currentPoll = null;
+        let hasVoted = false;
+
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}`);
+            
+            ws.onopen = () => {
+                console.log('WebSocket连接已建立');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'pollStarted') {
+                    location.reload();
+                } else if (data.type === 'pollEnded') {
+                    if (currentPoll && data.poll.id === currentPoll.id) {
+                        alert('投票已结束');
+                        location.reload();
+                    }
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket错误:', error);
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket连接已关闭，5秒后重连...');
+                setTimeout(connectWebSocket, 5000);
+            };
+        }
+
+        connectWebSocket();
+
+        // 验证投票码
+        async function verifyPollCode() {
+            const code = document.getElementById('pollCode').value.trim();
+            const errorDiv = document.getElementById('codeError');
+            
+            if (!code) {
+                errorDiv.textContent = '请输入投票码';
+                return;
+            }
+            
+            if (code.length !== 6 || !/^\d+$/.test(code)) {
+                errorDiv.textContent = '投票码必须是6位数字';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/poll/verify-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.poll) {
+                    currentPoll = data.poll;
+                    hasVoted = data.hasVoted;
+                    
+                    // 隐藏输入框，显示投票内容
+                    document.getElementById('codeInput').style.display = 'none';
+                    
+                    if (hasVoted) {
+                        showVotedState();
+                    } else {
+                        renderPoll();
+                    }
+                } else {
+                    errorDiv.textContent = data.message || '投票码无效';
+                }
+            } catch (error) {
+                errorDiv.textContent = '验证失败，请重试';
+            }
+        }
+        
+        // 渲染差额选举选票
+        function renderElectionBallot(container) {
+            const shouldElect = currentPoll.electionConfig.shouldElect;
+            
+            // 添加说明
+            const attendeeCount = currentPoll.electionConfig.attendeeCount;
+            const instructions = document.createElement('div');
+            instructions.style.cssText = 'background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;';
+            instructions.innerHTML = `
+                <h4 style="color: #856404; margin-bottom: 10px; font-size: 0.95em;">📋 投票说明</h4>
+                <ul style="font-size: 0.85em; color: #856404; line-height: 1.8; margin-left: 20px;">
+                    <li>应选<strong>${shouldElect}</strong>人，候选人<strong>${currentPoll.options.length}</strong>人，实际到会<strong>${attendeeCount}</strong>人</li>
+                    <li><strong style="color: #28a745;">赞成○</strong>：点击"○ 赞成"按钮</li>
+                    <li><strong style="color: #dc3545;">不赞成×</strong>：点击"× 不赞成"按钮</li>
+                    <li><strong>弃权</strong>：不点击任何按钮</li>
+                    <li><strong style="color: #ff4444;">重要：弃权的不能另选他人</strong></li>
+                    <li>投不赞成的可另选他人（填写姓名并必须点○）</li>
+                    <li>总选人数（赞成+另选）≤应选人数为有效票</li>
+                </ul>
+            `;
+            container.appendChild(instructions);
+            
+            // 候选人列表
+            currentPoll.options.forEach((option, index) => {
+                const candidateDiv = document.createElement('div');
+                candidateDiv.className = 'election-candidate';
+                candidateDiv.style.cssText = 'background: white; border: 2px solid #e9ecef; border-radius: 10px; padding: 15px; margin: 10px 0; display: flex; align-items: center; justify-content: space-between;';
+                
+                candidateDiv.innerHTML = `
+                    <div style="flex: 1; font-size: 1.1em; font-weight: 500;">${index + 1}. ${option}</div>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" class="vote-btn approve-btn" data-candidate="${option}" data-action="approve" 
+                                style="padding: 8px 20px; border: 2px solid #28a745; background: white; color: #28a745; border-radius: 8px; cursor: pointer; font-size: 1.2em; font-weight: bold;">
+                            ○ 赞成
+                        </button>
+                        <button type="button" class="vote-btn reject-btn" data-candidate="${option}" data-action="reject"
+                                style="padding: 8px 20px; border: 2px solid #dc3545; background: white; color: #dc3545; border-radius: 8px; cursor: pointer; font-size: 1.2em; font-weight: bold;">
+                            × 不赞成
+                        </button>
+                    </div>
+                `;
+                container.appendChild(candidateDiv);
+            });
+            
+            // 另选他人区域
+            const alternativeDiv = document.createElement('div');
+            alternativeDiv.style.cssText = 'background: #f8f9fa; padding: 25px; border-radius: 12px; margin-top: 25px; border: 2px dashed #6c757d;';
+            alternativeDiv.innerHTML = `
+                <h4 style="margin-bottom: 12px; color: #495057; font-size: 1.1em;">另选他人（仅限投不赞成票的）</h4>
+                <p style="font-size: 0.9em; color: #856404; margin-bottom: 20px; background: #fff3cd; padding: 12px; border-radius: 8px; border-left: 4px solid #ffc107;">
+                    ⚠️ <strong>重要提示：</strong>填写姓名后<strong style="color: #dc3545;">必须点击○按钮</strong>才有效，不点○视为无效
+                </p>
+                <div id="alternativeList"></div>
+                <button type="button" onclick="addAlternative()" style="width: 100%; padding: 14px 24px; margin-top: 15px; font-size: 1.05em;">
+                    + 添加另选人
+                </button>
+                <p id="alternativeHint" style="font-size: 0.9em; color: #dc3545; margin-top: 12px; display: none; background: #f8d7da; padding: 10px; border-radius: 8px;">
+                    ⚠️ 您还没有投不赞成票（×），暂时不能添加另选人
+                </p>
+            `;
+            container.appendChild(alternativeDiv);
+            
+            // 绑定按钮事件
+            document.querySelectorAll('.vote-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const candidate = this.dataset.candidate;
+                    const action = this.dataset.action;
+                    const parent = this.closest('.election-candidate');
+                    const buttons = parent.querySelectorAll('.vote-btn');
+                    
+                    // 切换选中状态
+                    if (this.classList.contains('selected')) {
+                        this.classList.remove('selected');
+                        this.style.background = 'white';
+                        this.style.color = action === 'approve' ? '#28a745' : '#dc3545';
+                    } else {
+                        buttons.forEach(b => {
+                            b.classList.remove('selected');
+                            b.style.background = 'white';
+                            b.style.color = b.dataset.action === 'approve' ? '#28a745' : '#dc3545';
+                        });
+                        this.classList.add('selected');
+                        this.style.background = action === 'approve' ? '#28a745' : '#dc3545';
+                        this.style.color = 'white';
+                    }
+                    
+                    // 更新另选人提示
+                    updateAlternativeHint();
+                });
+            });
+        }
+        
+        // 更新另选人提示
+        function updateAlternativeHint() {
+            const rejectCount = document.querySelectorAll('.reject-btn.selected').length;
+            const hint = document.getElementById('alternativeHint');
+            if (hint) {
+                hint.style.display = rejectCount === 0 ? 'block' : 'none';
+            }
+        }
+        
+        // 添加另选人
+        let alternativeCount = 0;
+        function addAlternative() {
+            // 检查是否有不赞成票
+            const rejectCount = document.querySelectorAll('.reject-btn.selected').length;
+            if (rejectCount === 0) {
+                alert('请先对候选人投不赞成票（×），才能添加另选人');
+                return;
+            }
+            
+            // 检查另选人数量是否已达上限
+            const currentAlternatives = document.querySelectorAll('.alternative-name').length;
+            if (currentAlternatives >= rejectCount) {
+                alert(`另选人数量不能超过不赞成人数(${rejectCount})`);
+                return;
+            }
+            
+            const list = document.getElementById('alternativeList');
+            alternativeCount++;
+            
+            const altDiv = document.createElement('div');
+            altDiv.style.cssText = 'display: flex; gap: 10px; margin: 15px 0; align-items: center;';
+            altDiv.innerHTML = `
+                <span style="min-width: 35px; font-weight: bold; color: #666; font-size: 1.1em;">${alternativeCount}.</span>
+                <input type="text" class="alternative-name" placeholder="请输入另选人姓名" lang="zh-CN"
+                       style="flex: 2; padding: 15px 18px; border: 2px solid #2b7cff; border-radius: 10px; font-size: 1.2em; font-weight: 500; ime-mode: active; min-width: 200px;" />
+                <button type="button" class="vote-btn approve-btn alternative-approve" 
+                        style="padding: 10px 18px; border: 2px solid #28a745; background: white; color: #28a745; border-radius: 10px; cursor: pointer; font-size: 1.1em; font-weight: bold; min-width: 130px; white-space: nowrap;">
+                    ○ 赞同（必点）
+                </button>
+                <button type="button" onclick="this.closest('div').remove(); updateAlternativeNumbers();" 
+                        style="width: auto; padding: 10px 18px; background: #dc3545; color: white; border-radius: 10px; font-size: 0.95em;">
+                    删除
+                </button>
+            `;
+            list.appendChild(altDiv);
+            
+            // 绑定另选人赞成按钮
+            const approveBtn = altDiv.querySelector('.alternative-approve');
+            approveBtn.addEventListener('click', function() {
+                if (this.classList.contains('selected')) {
+                    this.classList.remove('selected');
+                    this.style.background = 'white';
+                    this.style.color = '#28a745';
+                    this.textContent = '○ 赞同（必点）';
+                } else {
+                    this.classList.add('selected');
+                    this.style.background = '#28a745';
+                    this.style.color = 'white';
+                    this.textContent = '○ 已赞同';
+                }
+            });
+        }
+        
+        // 更新另选人编号
+        function updateAlternativeNumbers() {
+            const alternatives = document.querySelectorAll('#alternativeList > div');
+            alternatives.forEach((div, index) => {
+                const span = div.querySelector('span');
+                if (span) {
+                    span.textContent = `${index + 1}.`;
+                }
+            });
+            alternativeCount = alternatives.length;
+        }
+
+        // 收集差额选举投票数据
+        function collectElectionVotes() {
+            const shouldElect = currentPoll.electionConfig.shouldElect;
+            const approves = [];
+            const rejects = [];
+            const alternatives = [];
+            const abstentions = [];
+            
+            // 收集候选人投票
+            document.querySelectorAll('.election-candidate').forEach(div => {
+                const candidateName = div.querySelector('.vote-btn').dataset.candidate;
+                const selectedBtn = div.querySelector('.vote-btn.selected');
+                
+                if (selectedBtn) {
+                    if (selectedBtn.dataset.action === 'approve') {
+                        approves.push(candidateName);
+                    } else {
+                        rejects.push(candidateName);
+                    }
+                } else {
+                    // 没有点击任何按钮 = 弃权
+                    abstentions.push(candidateName);
+                }
+            });
+            
+            // 收集另选人（必须填写姓名且点击○）
+            const alternativeInputs = document.querySelectorAll('.alternative-name');
+            alternativeInputs.forEach(input => {
+                const name = input.value.trim();
+                const approveBtn = input.closest('div').querySelector('.alternative-approve');
+                
+                // 只有填写了姓名且点击了○才算有效
+                if (name && approveBtn && approveBtn.classList.contains('selected')) {
+                    alternatives.push(name);
+                } else if (name && (!approveBtn || !approveBtn.classList.contains('selected'))) {
+                    // 填写了姓名但没点○，给出警告
+                    return {
+                        valid: false,
+                        error: `另选人"${name}"未点击○标记，视为无效`
+                    };
+                }
+            });
+            
+            // 验证规则
+            const totalApproves = approves.length + alternatives.length;
+            
+            // 规则1：检查是否有弃权的人试图另选（这在UI上已经限制，但再次验证）
+            // 由于弃权的人不能另选，这个规则通过UI设计已经保证
+            
+            // 规则2：另选人数量不能超过不赞成人数
+            if (alternatives.length > rejects.length) {
+                return {
+                    valid: false,
+                    error: `另选人数量(${alternatives.length})不能超过不赞成人数(${rejects.length})`
+                };
+            }
+            
+            // 规则3：总选人数不能超过应选人数（多于为无效票）
+            if (totalApproves > shouldElect) {
+                return {
+                    valid: false,
+                    error: `总选人数(${totalApproves})超过应选人数(${shouldElect})，这是无效票！`
+                };
+            }
+            
+            // 规则4：总选人数等于或少于应选人数为有效票
+            if (totalApproves <= shouldElect) {
+                return {
+                    valid: true,
+                    selection: {
+                        type: 'election',
+                        approves,
+                        rejects,
+                        alternatives,
+                        abstentions,
+                        totalSelected: totalApproves
+                    }
+                };
+            }
+            
+            return {
+                valid: false,
+                error: '投票数据异常，请重新投票'
+            };
+        }
+
+        // 监听回车键
+        document.addEventListener('DOMContentLoaded', function() {
+            const pollCodeInput = document.getElementById('pollCode');
+            if (pollCodeInput) {
+                pollCodeInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        verifyPollCode();
+                    }
+                });
+                // 自动聚焦
+                pollCodeInput.focus();
+            }
+        });
+
+        function showNoPoll() {
+            document.getElementById('codeInput').style.display = 'none';
+            document.getElementById('noPoll').style.display = 'block';
+            document.getElementById('pollContent').style.display = 'none';
+            document.getElementById('votedState').style.display = 'none';
+        }
+
+        function showVotedState() {
+            document.getElementById('codeInput').style.display = 'none';
+            document.getElementById('noPoll').style.display = 'none';
+            document.getElementById('pollContent').style.display = 'none';
+            document.getElementById('votedState').style.display = 'block';
+        }
+
+        function renderPoll() {
+            document.getElementById('codeInput').style.display = 'none';
+            document.getElementById('noPoll').style.display = 'none';
+            document.getElementById('pollContent').style.display = 'block';
+            document.getElementById('votedState').style.display = 'none';
+            
+            document.getElementById('pollTitle').textContent = currentPoll.title;
+            document.getElementById('pollDescription').textContent = currentPoll.description || '';
+            
+            let typeText = currentPoll.type === 'single' ? '单选' : 
+                          currentPoll.type === 'election' ? '差额选举' : '多选';
+            if (currentPoll.type === 'election' && currentPoll.electionConfig) {
+                typeText += ` (应选${currentPoll.electionConfig.shouldElect}人)`;
+            } else if (currentPoll.type === 'multiple' && currentPoll.selectionConfig) {
+                if (currentPoll.selectionConfig.exact) {
+                    typeText += ` (必须选择${currentPoll.selectionConfig.exact}个)`;
+                } else {
+                    typeText += ` (${currentPoll.selectionConfig.min}-${currentPoll.selectionConfig.max}个)`;
+                }
+            }
+            
+            document.getElementById('pollType').textContent = typeText;
+            document.getElementById('pollAnonymous').textContent = currentPoll.anonymous ? '匿名投票' : '实名投票';
+            
+            const container = document.getElementById('optionsContainer');
+            container.innerHTML = '';
+            
+            // 差额选举特殊处理
+            if (currentPoll.type === 'election') {
+                renderElectionBallot(container);
+                return;
+            }
+            
+            const inputType = currentPoll.type === 'single' ? 'radio' : 'checkbox';
+            
+            currentPoll.options.forEach((option, index) => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'vote-option';
+                
+                const input = document.createElement('input');
+                input.type = inputType;
+                input.name = 'vote';
+                input.value = option;
+                input.id = `option${index}`;
+                
+                // 如果是多选，添加选择限制监听
+                if (inputType === 'checkbox' && currentPoll.selectionConfig) {
+                    input.addEventListener('change', function() {
+                        const checked = document.querySelectorAll('input[name="vote"]:checked').length;
+                        const max = currentPoll.selectionConfig.max || currentPoll.options.length;
+                        
+                        if (checked >= max) {
+                            document.querySelectorAll('input[name="vote"]:not(:checked)').forEach(cb => {
+                                cb.disabled = true;
+                            });
+                        } else {
+                            document.querySelectorAll('input[name="vote"]').forEach(cb => {
+                                cb.disabled = false;
+                            });
+                        }
+                    });
+                }
+                
+                const label = document.createElement('label');
+                label.htmlFor = `option${index}`;
+                label.textContent = option;
+                
+                // 让整个选项区域可点击
+                optionDiv.addEventListener('click', function(e) {
+                    // 如果点击的不是input本身，且input没有被禁用，则触发input的点击
+                    if (e.target !== input && !input.disabled) {
+                        input.click();
+                    }
+                });
+                
+                optionDiv.appendChild(input);
+                optionDiv.appendChild(label);
+                container.appendChild(optionDiv);
+            });
+        }
+
+        document.getElementById('voteForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            let selection;
+            
+            if (currentPoll.type === 'election') {
+                // 处理差额选举投票
+                const electionData = collectElectionVotes();
+                if (!electionData.valid) {
+                    alert(electionData.error);
+                    return;
+                }
+                selection = electionData.selection;
+            } else if (currentPoll.type === 'single') {
+                const selected = document.querySelector('input[name="vote"]:checked');
+                if (!selected) {
+                    alert('请选择一个选项');
+                    return;
+                }
+                selection = selected.value;
+            } else {
+                const selected = Array.from(document.querySelectorAll('input[name="vote"]:checked'));
+                
+                // 验证多选配置
+                if (currentPoll.selectionConfig) {
+                    if (currentPoll.selectionConfig.exact) {
+                        if (selected.length !== currentPoll.selectionConfig.exact) {
+                            alert(`必须选择${currentPoll.selectionConfig.exact}个选项`);
+                            return;
+                        }
+                    } else {
+                        if (selected.length < currentPoll.selectionConfig.min) {
+                            alert(`至少选择${currentPoll.selectionConfig.min}个选项`);
+                            return;
+                        }
+                        if (selected.length > currentPoll.selectionConfig.max) {
+                            alert(`最多选择${currentPoll.selectionConfig.max}个选项`);
+                            return;
+                        }
+                    }
+                } else if (selected.length === 0) {
+                    alert('请至少选择一个选项');
+                    return;
+                }
+                
+                selection = selected.map(input => input.value);
+            }
+            
+            try {
+                const response = await fetch('/api/vote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pollId: currentPoll.id,
+                        selection
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showVotedState();
+                } else {
+                    alert(data.message || '投票失败，请重试');
+                }
+            } catch (error) {
+                alert('投票失败，请重试');
+            }
+        });
+    </script>
+</body>
+</html>

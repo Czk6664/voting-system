@@ -1,0 +1,38 @@
+{
+  "name": "realtime-voting-system",
+  "version": "1.1.0",
+  "description": "实时投票系统 - 支持匿名投票、差额选举、实时统计、权限控制",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js",
+    "test:storage": "node test-storage.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop voting-system",
+    "pm2:restart": "pm2 restart voting-system",
+    "pm2:logs": "pm2 logs voting-system",
+    "pm2:status": "pm2 status",
+    "docker:build": "docker build -t voting-system .",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "keywords": [
+    "voting",
+    "poll",
+    "realtime",
+    "websocket",
+    "election"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
+  }
+}

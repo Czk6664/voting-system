@@ -1,0 +1,15 @@
+name = "voting-system"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "."
+
+# KV 命名空间用于数据存储（需要先创建）
+# 运行: wrangler kv:namespace create VOTING_DATA
+[[kv_namespaces]]
+binding = "VOTING_DATA"
+id = "" # 创建后填入
+preview_id = "" # 创建后填入
+
+# 环境变量
+[vars]
+ADMIN_PASSWORD = "admin123"
+NODE_ENV = "production"

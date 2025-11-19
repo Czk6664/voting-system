@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时投票系统</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🗳️ 实时投票系统</h1>
+            <p>安全 · 匿名 · 实时</p>
+        </div>
+
+        <div class="role-selection">
+            <div class="role-card" onclick="showAdminLogin()">
+                <div class="role-icon">👨‍💼</div>
+                <h2>管理员</h2>
+                <p>创建和管理投票</p>
+            </div>
+
+            <div class="role-card" onclick="showVoterLogin()">
+                <div class="role-icon">🙋</div>
+                <h2>投票者</h2>
+                <p>参与投票</p>
+            </div>
+
+            <div class="role-card" onclick="window.location.href='display.html'">
+                <div class="role-icon">📊</div>
+                <h2>公开展示</h2>
+                <p>实时查看结果</p>
+            </div>
+        </div>
+
+        <!-- 管理员登录 -->
+        <div id="adminLogin" class="login-form" style="display: none;">
+            <h2>管理员登录</h2>
+            <input type="password" id="adminPassword" placeholder="请输入管理员密码" />
+            <button onclick="adminLogin()">登录</button>
+            <button onclick="hideLogin()" class="secondary">取消</button>
+            <div id="adminError" class="error"></div>
+        </div>
+
+        <!-- 投票者登录 -->
+        <div id="voterLogin" class="login-form" style="display: none;">
+            <h2>投票者入口</h2>
+            <p>直接进入投票</p>
+            <button onclick="voterDirectAccess()">进入投票</button>
+            <button onclick="hideLogin()" class="secondary">取消</button>
+            <div id="voterError" class="error"></div>
+        </div>
+    </div>
+
+    <script>
+        function showAdminLogin() {
+            document.querySelector('.role-selection').style.display = 'none';
+            document.getElementById('adminLogin').style.display = 'block';
+        }
+
+        function showVoterLogin() {
+            document.querySelector('.role-selection').style.display = 'none';
+            document.getElementById('voterLogin').style.display = 'block';
+        }
+
+        function hideLogin() {
+            document.querySelector('.role-selection').style.display = 'grid';
+            document.getElementById('adminLogin').style.display = 'none';
+            document.getElementById('voterLogin').style.display = 'none';
+        }
+
+        async function adminLogin() {
+            const password = document.getElementById('adminPassword').value;
+            const errorDiv = document.getElementById('adminError');
+            
+            try {
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('adminToken', data.token);
+                    window.location.href = 'admin.html';
+                } else {
+                    errorDiv.textContent = data.message;
+                }
+            } catch (error) {
+                errorDiv.textContent = '登录失败，请重试';
+            }
+        }
+
+        function voterDirectAccess() {
+            window.location.href = 'voter.html';
+        }
+    </script>
+</body>
+</html>
